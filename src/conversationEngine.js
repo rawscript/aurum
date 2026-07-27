@@ -1,10 +1,12 @@
 // conversationEngine.js
 // The heart of Aurum: takes one incoming WhatsApp message + the sender's
 // current conversation state, and decides what happens next — ask the next
-// question, re-ask on a bad answer, or wrap up and write to the sheet.
+// question, re-ask on a bad answer, answer a side question via the LLM, or
+// wrap up and write to the sheet.
 
 const store = require("./store");
 const wa = require("./whatsappClient");
+const llm = require("./llmClient");
 const { appendResponse } = require("./sheetsClient");
 
 const COPY = {
@@ -43,7 +45,7 @@ function extractFormId(messageText) {
   return match ? match[1] : null;
 }
 
-function validateAnswer(question, rawText) {
+async function validateAnswer(question, rawText) {
   const text = (rawText || "").trim();
 
   if (question.required && text.length === 0) {
@@ -56,9 +58,18 @@ function validateAnswer(question, rawText) {
   }
 
   if (question.type === "single_choice" && question.options.length > 0) {
-    const match = question.options.find(
-      (o) => o.toLowerCase() === text.toLowerCase()
-    );
+    let match = question.options.find((o) => o.toLowerCase() === text.toLowerCase());
+
+    // Exact match failed — before giving up, ask the LLM if the free-text
+    // reply clearly means one of the options ("yep" -> "Yes", etc).
+    if (!match) {
+      try {
+        match = await llm.matchFreeformToOption(question.label, question.options, text);
+      } catch (err) {
+        console.error("LLM fuzzy-match failed, falling back to strict validation:", err.message);
+      }
+    }
+
     if (!match) return { ok: false, errorKey: "invalidChoice", errorArgs: [question.options] };
     return { ok: true, value: match };
   }
@@ -92,7 +103,7 @@ function messageBodyOf(message) {
 async function handleIncomingMessage(message) {
   const waId = message.from;
   const body = messageBodyOf(message);
-  let convo = store.getConversation(waId);
+  let convo = await store.getConversation(waId);
 
   // Brand-new conversation: figure out which form this belongs to.
   if (!convo) {
@@ -104,7 +115,7 @@ async function handleIncomingMessage(message) {
       );
       return;
     }
-    const form = store.getForm(formId);
+    const form = await store.getForm(formId);
     if (!form) {
       await wa.sendText(waId, "Sorry, I couldn't find that form — it may have been removed.");
       return;
@@ -120,16 +131,16 @@ async function handleIncomingMessage(message) {
       createdAt: new Date().toISOString(),
       lastMessageAt: new Date().toISOString(),
     };
-    store.saveConversation(waId, convo);
+    await store.saveConversation(waId, convo);
     await wa.sendButtons(waId, COPY.en.chooseLanguage, ["English", "Swahili"]);
     return;
   }
 
   convo.lastMessageAt = new Date().toISOString();
 
-  const form = store.getForm(convo.formId);
+  const form = await store.getForm(convo.formId);
   if (!form) {
-    store.deleteConversation(waId);
+    await store.deleteConversation(waId);
     await wa.sendText(waId, "Sorry, this form is no longer available.");
     return;
   }
@@ -139,7 +150,7 @@ async function handleIncomingMessage(message) {
     const lang = /swahili/i.test(body) ? "sw" : "en";
     convo.lang = lang;
     convo.stage = "in_progress";
-    store.saveConversation(waId, convo);
+    await store.saveConversation(waId, convo);
     await wa.sendText(waId, t(lang, "welcome", form.title));
     await askQuestion(waId, lang, form.questions[0]);
     return;
@@ -148,22 +159,33 @@ async function handleIncomingMessage(message) {
   // Stage 2: walking through questions
   if (convo.stage === "in_progress") {
     const question = form.questions[convo.currentQuestionIndex];
-    const result = validateAnswer(question, body);
+    const result = await validateAnswer(question, body);
 
     if (!result.ok) {
+      // Before just re-asking, check whether this looks like a genuine side
+      // question ("why do you need my email?") rather than a bad attempt at
+      // answering — if so, let the LLM give a short, grounded reply first.
+      if (llm.looksLikeAQuestion(body)) {
+        try {
+          const reply = await llm.answerSideQuestion(form.title, question.label, body, convo.lang);
+          if (reply) await wa.sendText(waId, reply);
+        } catch (err) {
+          console.error("LLM side-question reply failed:", err.message);
+        }
+      }
       await wa.sendText(waId, t(convo.lang, result.errorKey, ...(result.errorArgs || [])));
       return; // re-ask same question, don't advance
     }
 
     convo.answers[question.id] = result.value;
     convo.currentQuestionIndex += 1;
-    store.saveConversation(waId, convo);
+    await store.saveConversation(waId, convo);
 
     if (convo.currentQuestionIndex >= form.questions.length) {
       convo.stage = "completed";
       convo.status = "completed";
       convo.completedAt = new Date().toISOString();
-      store.saveConversation(waId, convo);
+      await store.saveConversation(waId, convo);
       await wa.sendText(waId, t(convo.lang, "done"));
 
       if (form.sheetId) {
@@ -188,3 +210,5 @@ async function handleIncomingMessage(message) {
 }
 
 module.exports = { handleIncomingMessage, extractFormId };
+EOF
+node -c /home/claude/aurum/src/conversationEngine.js && echo OK
