@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aurum — your events</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14161d; --ink-soft: #1d202b; --parchment: #f3ede0;
+    --parchment-dim: #b9b3a5; --gold: #c9a227; --gold-bright: #e2c14f; --sage: #6f8f77;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background: var(--ink); color: var(--parchment); font-family:'Inter',sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom: 30px; }
+  .logo { font-family:'Fraunces', serif; font-size:1.3rem; }
+  .logo em { font-style:normal; color: var(--gold-bright); }
+  a.back { color: var(--parchment-dim); text-decoration:none; font-size:0.9rem; }
+  h1 { font-family:'Fraunces', serif; font-weight:500; font-size:1.6rem; margin: 0 0 24px; }
+  .card {
+    background: var(--ink-soft); border:1px solid rgba(201,162,39,0.15); border-radius:14px;
+    padding: 20px 22px; margin-bottom: 16px;
+  }
+  .card-top { display:flex; justify-content:space-between; align-items:flex-start; gap: 16px; flex-wrap: wrap; }
+  .card h3 { margin:0 0 4px; font-family:'Fraunces', serif; font-weight:500; }
+  .meta { color: var(--parchment-dim); font-size: 0.85rem; }
+  .stats { display:flex; gap: 22px; margin-top: 14px; }
+  .stat .n { font-family:'Fraunces', serif; font-size:1.4rem; color: var(--gold-bright); }
+  .stat .l { color: var(--parchment-dim); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .progress { height:6px; background:#0e0f14; border-radius:4px; overflow:hidden; margin-top:12px; }
+  .progress div { height:100%; background: var(--sage); }
+  .dropoff { margin-top: 14px; font-size: 0.85rem; color: var(--parchment-dim); }
+  .dropoff strong { color: var(--parchment); }
+  .qr-link img { width: 64px; height:64px; border-radius:8px; }
+  .empty { color: var(--parchment-dim); text-align:center; padding: 60px 0; }
+  .empty a { color: var(--gold-bright); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">a<em>u</em>rum</div>
+    <a class="back" href="/">← Create a new event</a>
+  </header>
+  <h1>Your events</h1>
+  <div id="list"></div>
+</div>
+
+<script>
+async function load() {
+  const list = document.getElementById('list');
+  const res = await fetch('/api/forms');
+  const forms = await res.json();
+
+  if (forms.length === 0) {
+    list.innerHTML = '<div class="empty">No events yet — <a href="/">create your first one</a>.</div>';
+    return;
+  }
+
+  list.innerHTML = forms.map(f => {
+    const pct = f.stats.totalStarted ? Math.round((f.stats.totalCompleted / f.stats.totalStarted) * 100) : 0;
+    const dropoffEntries = Object.entries(f.stats.dropoffByQuestion || {});
+    const dropoffHtml = dropoffEntries.length
+      ? `<div class="dropoff">Most drop-off at: ${dropoffEntries.sort((a,b)=>b[1]-a[1]).slice(0,2).map(([q,n]) => `<strong>${q}</strong> (${n})`).join(', ')}</div>`
+      : '';
+
+    return `
+      <div class="card">
+        <div class="card-top">
+          <div>
+            <h3>${f.title}</h3>
+            <div class="meta">${f.questions.length} questions · created ${new Date(f.createdAt).toLocaleDateString()}</div>
+          </div>
+          <div class="qr-link"><a href="/api/forms/${f.id}/qr" target="_blank"><img src="/api/forms/${f.id}/qr" alt="QR code" /></a></div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="n">${f.stats.totalStarted}</div><div class="l">Started</div></div>
+          <div class="stat"><div class="n">${f.stats.totalCompleted}</div><div class="l">Completed</div></div>
+          <div class="stat"><div class="n">${pct}%</div><div class="l">Completion</div></div>
+        </div>
+        <div class="progress"><div style="width:${pct}%"></div></div>
+        ${dropoffHtml}
+      </div>
+    `;
+  }).join('');
+}
+load();
+</script>
+</body>
+</html>
