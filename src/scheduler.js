@@ -12,7 +12,7 @@ const REMINDER_HOURS_BEFORE_EVENT = Number(process.env.REMINDER_HOURS_BEFORE_EVE
 
 async function runNudgeCheck() {
   const now = Date.now();
-  const conversations = store.allConversations();
+  const conversations = await store.allConversations();
 
   for (const convo of conversations) {
     if (convo.stage !== "in_progress" || convo.nudged) continue;
@@ -26,7 +26,7 @@ async function runNudgeCheck() {
             : "Hey, still there? I saved your answers so far — just reply to continue whenever you're ready."
         );
         convo.nudged = true;
-        store.saveConversation(convo.waId, convo);
+        await store.saveConversation(convo.waId, convo);
       } catch (err) {
         console.error(`Nudge failed for ${convo.waId}:`, err.message);
       }
@@ -36,7 +36,7 @@ async function runNudgeCheck() {
 
 async function runReminderCheck() {
   const now = Date.now();
-  const forms = store.listForms();
+  const forms = await store.listForms();
 
   for (const form of forms) {
     if (!form.eventDateTime || form.reminderSent) continue;
@@ -44,9 +44,9 @@ async function runReminderCheck() {
     const hoursUntilEvent = (eventTime - now) / 3600000;
 
     if (hoursUntilEvent <= REMINDER_HOURS_BEFORE_EVENT && hoursUntilEvent > 0) {
-      const attendees = store
-        .listConversationsForForm(form.id)
-        .filter((c) => c.status === "completed");
+      const attendees = (await store.listConversationsForForm(form.id)).filter(
+        (c) => c.status === "completed"
+      );
 
       for (const convo of attendees) {
         try {
@@ -62,7 +62,7 @@ async function runReminderCheck() {
         }
       }
       form.reminderSent = true;
-      store.saveForm(form);
+      await store.saveForm(form);
     }
   }
 }
@@ -77,3 +77,5 @@ function start() {
 }
 
 module.exports = { start };
+EOF
+node -c /home/claude/aurum/src/scheduler.js && echo OK
