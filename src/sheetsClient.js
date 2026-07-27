@@ -1,20 +1,11 @@
 // sheetsClient.js
-// Appends completed form responses to a Google Sheet using a service account.
-// Setup: Google Cloud Console > create service account > enable Sheets API >
-// download JSON key > share the target spreadsheet with the service account email.
+// Appends completed form responses to a Google Sheet — created and owned by
+// the organizer's own Google account (via googleAuth.js), not a shared
+// service account. This is what makes "sign in with Google" meaningful:
+// the organizer can see the file in their own Drive and revoke access anytime.
 
 const { google } = require("googleapis");
-
-function getAuth() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-  if (!email || !key) {
-    throw new Error("Missing Google service account credentials in environment.");
-  }
-  return new google.auth.JWT(email, null, key, [
-    "https://www.googleapis.com/auth/spreadsheets",
-  ]);
-}
+const googleAuth = require("./googleAuth");
 
 async function ensureHeaderRow(sheets, spreadsheetId, questions) {
   const header = ["Timestamp", "WhatsApp Number", ...questions.map((q) => q.label)];
@@ -26,12 +17,37 @@ async function ensureHeaderRow(sheets, spreadsheetId, questions) {
   });
 }
 
-async function appendResponse(spreadsheetId, form, waId, answers) {
-  const auth = getAuth();
+// Creates a fresh spreadsheet in the organizer's Drive for a new form and
+// returns its ID. Requires the organizer to have signed in with Google.
+async function createSpreadsheetForForm(form, organizerId) {
+  if (!organizerId) {
+    throw new Error(
+      "Creating a Sheet requires the organizer to sign in with Google first."
+    );
+  }
+  const auth = await googleAuth.getAuthorizedClient(organizerId);
   const sheets = google.sheets({ version: "v4", auth });
 
-  // Cheap idempotent header write — fine at this volume, and guarantees a
-  // brand-new sheet always gets labeled columns before the first row lands.
+  const res = await sheets.spreadsheets.create({
+    requestBody: {
+      properties: { title: `Aurum — ${form.title}` },
+      sheets: [{ properties: { title: "Sheet1" } }],
+    },
+  });
+  const spreadsheetId = res.data.spreadsheetId;
+  await ensureHeaderRow(sheets, spreadsheetId, form.questions);
+  return spreadsheetId;
+}
+
+async function appendResponse(spreadsheetId, form, waId, answers) {
+  if (!form.organizerId) {
+    throw new Error("This form has no organizer on file — cannot access its Sheet.");
+  }
+  const auth = await googleAuth.getAuthorizedClient(form.organizerId);
+  const sheets = google.sheets({ version: "v4", auth });
+
+  // Cheap idempotent header write — guarantees a brand-new sheet always gets
+  // labeled columns before the first row lands.
   await ensureHeaderRow(sheets, spreadsheetId, form.questions);
 
   const row = [
@@ -49,20 +65,6 @@ async function appendResponse(spreadsheetId, form, waId, answers) {
   });
 }
 
-// Creates a fresh spreadsheet for a new form and returns its ID.
-// Organizers can also skip this and paste an existing sheet ID they own.
-async function createSpreadsheetForForm(form) {
-  const auth = getAuth();
-  const sheets = google.sheets({ version: "v4", auth });
-  const res = await sheets.spreadsheets.create({
-    requestBody: {
-      properties: { title: `Aurum — ${form.title}` },
-      sheets: [{ properties: { title: "Sheet1" } }],
-    },
-  });
-  const spreadsheetId = res.data.spreadsheetId;
-  await ensureHeaderRow(sheets, spreadsheetId, form.questions);
-  return spreadsheetId;
-}
-
 module.exports = { appendResponse, createSpreadsheetForForm };
+EOF
+node -c /home/claude/aurum/src/sheetsClient.js && echo OK
