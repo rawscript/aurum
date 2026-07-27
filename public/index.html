@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aurum — turn any form into a WhatsApp chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14161d;
+    --ink-soft: #1d202b;
+    --parchment: #f3ede0;
+    --parchment-dim: #b9b3a5;
+    --gold: #c9a227;
+    --gold-bright: #e2c14f;
+    --sage: #6f8f77;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--parchment);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.5;
+  }
+  h1, h2, .display {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  a { color: inherit; }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 28px 0;
+  }
+  .logo { font-family: 'Fraunces', serif; font-size: 1.4rem; letter-spacing: 0.02em; }
+  .logo em { font-style: normal; color: var(--gold-bright); }
+  nav a { color: var(--parchment-dim); text-decoration: none; font-size: 0.9rem; margin-left: 28px; }
+  nav a:hover { color: var(--parchment); }
+
+  .hero { padding: 64px 0 40px; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; }
+  .eyebrow { color: var(--gold); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 18px; }
+  .hero h1 { font-size: clamp(2.2rem, 4vw, 3.4rem); line-height: 1.06; margin: 0 0 20px; }
+  .hero h1 .gold { color: var(--gold-bright); }
+  .hero p.sub { color: var(--parchment-dim); font-size: 1.08rem; max-width: 46ch; margin: 0 0 34px; }
+
+  /* --- Form panel --- */
+  .panel {
+    background: var(--ink-soft);
+    border: 1px solid rgba(201,162,39,0.18);
+    border-radius: var(--radius);
+    padding: 22px;
+  }
+  .field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type="text"], input[type="url"], input[type="datetime-local"] {
+    flex: 1; min-width: 220px;
+    background: #0e0f14;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--parchment);
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-family: inherit;
+  }
+  input::placeholder { color: #6b6f7c; }
+  input:focus, button:focus-visible {
+    outline: 2px solid var(--gold); outline-offset: 2px;
+  }
+  .optional-row { display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .optional-row label { color: var(--parchment-dim); font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+
+  button.cta {
+    background: var(--gold);
+    color: #1a1508;
+    border: none;
+    padding: 14px 22px;
+    border-radius: 10px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  button.cta:hover { background: var(--gold-bright); }
+  button.cta:active { transform: scale(0.98); }
+  button.cta:disabled { opacity: 0.5; cursor: wait; }
+
+  .hint { color: #6b6f7c; font-size: 0.8rem; margin-top: 12px; }
+
+  /* --- Phone mockup (signature element) --- */
+  .phone {
+    width: 100%; max-width: 300px; margin: 0 auto;
+    background: #0e0f14;
+    border: 8px solid #23252f;
+    border-radius: 34px;
+    padding: 18px 14px 22px;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6);
+  }
+  .phone .bar { height: 4px; width: 40px; background: #34363f; border-radius: 4px; margin: 0 auto 16px; }
+  .bubble {
+    max-width: 86%;
+    padding: 10px 13px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+    opacity: 0;
+    animation: rise 0.5s ease forwards;
+  }
+  .bubble.bot { background: #262a35; color: var(--parchment); border-bottom-left-radius: 4px; }
+  .bubble.user { background: var(--sage); color: #0e150f; border-bottom-right-radius: 4px; margin-left: auto; }
+  .bubble:nth-child(2) { animation-delay: 0.2s; }
+  .bubble:nth-child(3) { animation-delay: 1.0s; }
+  .bubble:nth-child(4) { animation-delay: 1.8s; }
+  .bubble:nth-child(5) { animation-delay: 2.6s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    .bubble { animation: none; opacity: 1; }
+  }
+
+  /* --- Result panel --- */
+  #result { display: none; margin-top: 22px; }
+  #result.show { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
+  #result .qr { background: #fff; padding: 10px; border-radius: 10px; }
+  #result .qr img { display: block; width: 150px; height: 150px; }
+  #result .links a { display: inline-block; margin-top: 10px; font-size: 0.9rem; color: var(--gold-bright); }
+  #result h3 { margin: 0 0 6px; font-family: 'Fraunces', serif; font-weight: 500; }
+  .copy-btn {
+    background: transparent; border: 1px solid rgba(255,255,255,0.2); color: var(--parchment);
+    padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; cursor: pointer; margin-top: 8px;
+  }
+  .copy-btn:hover { border-color: var(--gold); }
+  .error-msg { color: #e2725b; font-size: 0.88rem; margin-top: 12px; display: none; }
+
+  /* --- How it works --- */
+  .steps { padding: 60px 0 80px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .steps h2 { font-size: 1.7rem; margin-bottom: 36px; }
+  .step-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+  .step { }
+  .step .num { color: var(--gold); font-family: 'Fraunces', serif; font-size: 1.6rem; margin-bottom: 10px; display: block; }
+  .step h4 { margin: 0 0 8px; font-size: 1.05rem; font-weight: 600; font-family: 'Inter', sans-serif; }
+  .step p { color: var(--parchment-dim); font-size: 0.92rem; margin: 0; }
+
+  footer { padding: 30px 0 50px; color: #555863; font-size: 0.82rem; border-top: 1px solid rgba(255,255,255,0.06); }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; }
+    .step-grid { grid-template-columns: 1fr; }
+    #result.show { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="logo">a<em>u</em>rum</div>
+      <nav>
+        <a href="/dashboard.html">Your events</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Forms people actually finish</div>
+        <h1>Nobody likes filling in a form.<br>Everyone already has <span class="gold">WhatsApp</span> open.</h1>
+        <p class="sub">Paste a Google Forms or Microsoft Forms link. Aurum turns it into a WhatsApp conversation your audience can complete by texting "hi" — no app to install, no account to create.</p>
+
+        <div class="panel">
+          <div class="field-row">
+            <input type="url" id="formUrl" placeholder="Paste your Google or Microsoft Forms link" />
+            <button class="cta" id="submitBtn">Turn it into a chat</button>
+          </div>
+          <div class="optional-row">
+            <label>Event date/time (optional, enables reminders)
+              <input type="datetime-local" id="eventDate" style="max-width:200px;" />
+            </label>
+            <label><input type="checkbox" id="createSheet" checked style="width:auto;" /> Create a Google Sheet for responses</label>
+          </div>
+          <div class="hint">Works with any Google Form set to "Anyone with the link". Microsoft Forms support is best-effort for simple question types.</div>
+          <div class="error-msg" id="errorMsg"></div>
+
+          <div id="result">
+            <div>
+              <h3 id="resultTitle"></h3>
+              <div class="links">
+                <div id="questionCount" style="color:var(--parchment-dim); font-size:0.88rem;"></div>
+                <a id="waLinkText" target="_blank" rel="noopener"></a>
+              </div>
+              <button class="copy-btn" id="copyBtn">Copy link</button>
+            </div>
+            <div class="qr">
+              <img id="qrImg" src="" alt="QR code linking to the WhatsApp chat" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phone" aria-hidden="true">
+        <div class="bar"></div>
+        <div class="bubble bot">Hi 👋 I'm here to help you register for TechTalks. Ready?</div>
+        <div class="bubble user">Yes!</div>
+        <div class="bubble bot">Great — what's your full name?</div>
+        <div class="bubble user">Aisha Wanjiru</div>
+      </div>
+    </section>
+
+    <section class="steps">
+      <h2>How it works</h2>
+      <div class="step-grid">
+        <div class="step">
+          <span class="num">01</span>
+          <h4>Paste your form link</h4>
+          <p>Aurum reads every question, its type, and its options straight from your existing Google or Microsoft Form.</p>
+        </div>
+        <div class="step">
+          <span class="num">02</span>
+          <h4>Get a QR code</h4>
+          <p>Print it on your poster or flyer. No branding to design — just scan and chat.</p>
+        </div>
+        <div class="step">
+          <span class="num">03</span>
+          <h4>Watch responses roll in</h4>
+          <p>Every completed chat becomes a row in a spreadsheet. Check your dashboard for live counts and drop-off points.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>Aurum — built for organizers who'd rather run the event than chase form submissions.</footer>
+  </div>
+
+<script>
+  const btn = document.getElementById('submitBtn');
+  const urlInput = document.getElementById('formUrl');
+  const errorMsg = document.getElementById('errorMsg');
+  const result = document.getElementById('result');
+
+  btn.addEventListener('click', async () => {
+    const url = urlInput.value.trim();
+    errorMsg.style.display = 'none';
+    result.classList.remove('show');
+
+    if (!url) {
+      errorMsg.textContent = 'Paste a form link first.';
+      errorMsg.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Reading your form…';
+
+    try {
+      const eventDateTime = document.getElementById('eventDate').value || null;
+      const createSheet = document.getElementById('createSheet').checked;
+
+      const res = await fetch('/api/forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, eventDateTime, createSheet })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+
+      document.getElementById('resultTitle').textContent = data.form.title;
+      document.getElementById('questionCount').textContent = `${data.form.questions.length} questions detected`;
+      const waLinkEl = document.getElementById('waLinkText');
+      waLinkEl.href = data.waLink;
+      waLinkEl.textContent = data.waLink;
+      document.getElementById('qrImg').src = data.qrDataUrl;
+      result.classList.add('show');
+
+      document.getElementById('copyBtn').onclick = () => {
+        navigator.clipboard.writeText(data.waLink);
+        document.getElementById('copyBtn').textContent = 'Copied!';
+        setTimeout(() => (document.getElementById('copyBtn').textContent = 'Copy link'), 1500);
+      };
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Turn it into a chat';
+    }
+  });
+</script>
+</body>
+</html>
